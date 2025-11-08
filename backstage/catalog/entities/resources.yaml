@@ -1,0 +1,80 @@
+# Recursos de infraestructura
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: example-database
+  description: Base de datos PostgreSQL para microservicios
+  tags:
+    - postgresql
+    - database
+    - infrastructure
+spec:
+  type: database
+  owner: platform-team
+  system: example-system
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: example-redis
+  description: Cache Redis para sesiones y datos temporales
+  tags:
+    - redis
+    - cache
+    - infrastructure
+spec:
+  type: cache
+  owner: platform-team
+  system: example-system
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: kubernetes-cluster
+  description: Cluster Kubernetes local (Docker Desktop)
+  annotations:
+    kubernetes.io/cluster: docker-desktop
+  tags:
+    - kubernetes
+    - docker-desktop
+    - infrastructure
+spec:
+  type: kubernetes-cluster
+  owner: platform-team
+  system: platform-system
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: argocd-postgres
+  description: Base de datos PostgreSQL de ArgoCD
+  tags:
+    - postgresql
+    - argocd
+    - infrastructure
+spec:
+  type: database
+  owner: platform-team
+  system: platform-system
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: nginx-ingress
+  description: NGINX Ingress Controller
+  annotations:
+    kubernetes.io/namespace: ingress-nginx
+    kubernetes.io/deployment: ingress-nginx-controller
+  tags:
+    - nginx
+    - ingress
+    - load-balancer
+spec:
+  type: load-balancer
+  owner: platform-team
+  system: platform-system

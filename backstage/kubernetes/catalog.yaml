@@ -1,0 +1,223 @@
+# ConfigMap con el catálogo de Backstage
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backstage-catalog
+  namespace: backstage
+  labels:
+    app.kubernetes.io/name: backstage
+    app.kubernetes.io/component: catalog
+    app.kubernetes.io/part-of: backstage
+data:
+  # Archivo principal del catálogo
+  all.yaml: |
+    apiVersion: backstage.io/v1alpha1
+    kind: Location
+    metadata:
+      name: all-entities
+      description: Catálogo de todas las entidades
+    spec:
+      targets:
+        - ./users.yaml
+        - ./groups.yaml
+        - ./components.yaml
+        - ./resources.yaml
+        - ./apis.yaml
+        - ./systems.yaml
+  
+  # Usuarios
+  users.yaml: |
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: User
+    metadata:
+      name: guest
+      description: Usuario invitado
+    spec:
+      profile:
+        displayName: Guest User
+        email: guest@company.local
+      memberOf: [dev-team]
+    
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: User
+    metadata:
+      name: admin
+      description: Usuario administrador
+    spec:
+      profile:
+        displayName: Administrator
+        email: admin@company.local
+      memberOf: [platform-team]
+  
+  # Grupos
+  groups.yaml: |
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Group
+    metadata:
+      name: dev-team
+      description: Equipo de desarrollo
+    spec:
+      type: team
+      profile:
+        displayName: Development Team
+        email: dev-team@company.local
+      children: []
+    
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Group
+    metadata:
+      name: platform-team
+      description: Equipo de plataforma
+    spec:
+      type: team
+      profile:
+        displayName: Platform Team
+        email: platform@company.local
+      children: []
+  
+  # Componentes
+  components.yaml: |
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Component
+    metadata:
+      name: backstage-k8s
+      description: Backstage ejecutándose en Kubernetes
+      annotations:
+        kubernetes.io/deployment: backstage
+        argocd/app-name: backstage
+      tags:
+        - backstage
+        - kubernetes
+        - platform
+    spec:
+      type: website
+      lifecycle: production
+      owner: platform-team
+      system: platform-system
+    
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Component
+    metadata:
+      name: argocd-server
+      description: Servidor ArgoCD para GitOps
+      annotations:
+        kubernetes.io/deployment: argocd-server
+        kubernetes.io/namespace: argocd
+      tags:
+        - argocd
+        - gitops
+        - kubernetes
+      links:
+        - url: https://argocd.test.com
+          title: ArgoCD UI
+          icon: dashboard
+    spec:
+      type: service
+      lifecycle: production
+      owner: platform-team
+      system: platform-system
+  
+  # Recursos
+  resources.yaml: |
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Resource
+    metadata:
+      name: backstage-postgres
+      description: Base de datos PostgreSQL para Backstage
+      annotations:
+        kubernetes.io/deployment: postgres
+        kubernetes.io/namespace: backstage
+      tags:
+        - postgresql
+        - database
+        - kubernetes
+    spec:
+      type: database
+      owner: platform-team
+      system: platform-system
+    
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Resource
+    metadata:
+      name: backstage-redis
+      description: Cache Redis para Backstage
+      annotations:
+        kubernetes.io/deployment: redis
+        kubernetes.io/namespace: backstage
+      tags:
+        - redis
+        - cache
+        - kubernetes
+    spec:
+      type: cache
+      owner: platform-team
+      system: platform-system
+  
+  # Sistemas
+  systems.yaml: |
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: System
+    metadata:
+      name: platform-system
+      description: Sistema de plataforma con Backstage y ArgoCD
+      tags:
+        - platform
+        - backstage
+        - argocd
+        - kubernetes
+    spec:
+      owner: platform-team
+      domain: platform
+    
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: Domain
+    metadata:
+      name: platform
+      description: Dominio de plataforma y herramientas
+    spec:
+      owner: platform-team
+  
+  # APIs
+  apis.yaml: |
+    ---
+    apiVersion: backstage.io/v1alpha1
+    kind: API
+    metadata:
+      name: backstage-api
+      description: API del backend de Backstage en Kubernetes
+      tags:
+        - backstage
+        - rest
+        - kubernetes
+    spec:
+      type: openapi
+      lifecycle: production
+      owner: platform-team
+      system: platform-system
+      definition: |
+        openapi: 3.0.3
+        info:
+          title: Backstage API
+          description: API del backend de Backstage
+          version: 1.0.0
+        servers:
+          - url: http://backstage.test.com/api
+            description: Kubernetes deployment
+        paths:
+          /health:
+            get:
+              summary: Health check
+              responses:
+                '200':
+                  description: Health status

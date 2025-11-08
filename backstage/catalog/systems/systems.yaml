@@ -1,0 +1,47 @@
+# Definición de sistemas
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: example-system
+  description: Sistema de ejemplo con microservicios
+  tags:
+    - example
+    - microservices
+    - nodejs
+spec:
+  owner: dev-team
+  domain: development
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: platform-system
+  description: Sistema de plataforma (Backstage, ArgoCD, infraestructura)
+  tags:
+    - platform
+    - backstage
+    - argocd
+    - infrastructure
+spec:
+  owner: platform-team
+  domain: platform
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Domain
+metadata:
+  name: development
+  description: Dominio de desarrollo y aplicaciones
+spec:
+  owner: dev-team
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Domain
+metadata:
+  name: platform
+  description: Dominio de plataforma y herramientas
+spec:
+  owner: platform-team

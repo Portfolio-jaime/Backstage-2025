@@ -1,0 +1,174 @@
+# Deployment principal de Backstage
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backstage
+  namespace: backstage
+  labels:
+    app.kubernetes.io/name: backstage
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: backstage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backstage
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backstage
+        app.kubernetes.io/component: frontend
+        app.kubernetes.io/part-of: backstage
+    spec:
+      serviceAccountName: backstage
+      containers:
+      - name: backstage
+        # Puedes construir tu propia imagen o usar una base
+        image: backstage:latest  # Tu imagen personalizada
+        imagePullPolicy: IfNotPresent
+        # image: node:18-alpine  # Imagen base para desarrollo
+        ports:
+        - containerPort: 7007
+          name: backend
+        - containerPort: 3000
+          name: frontend
+        env:
+        - name: NODE_ENV
+          value: production
+        - name: LOG_LEVEL
+          value: info
+        - name: POSTGRES_HOST
+          value: postgres
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_USER
+          value: backstage
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backstage-secrets
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          value: backstage
+        - name: REDIS_URL
+          value: redis://redis:6379
+        - name: ARGOCD_URL
+          valueFrom:
+            secretKeyRef:
+              name: backstage-secrets
+              key: ARGOCD_URL
+        - name: ARGOCD_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: backstage-secrets
+              key: ARGOCD_USERNAME
+        - name: ARGOCD_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backstage-secrets
+              key: ARGOCD_PASSWORD
+        - name: ARGOCD_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: argocd-auth
+              key: ARGOCD_AUTH_TOKEN
+        - name: AUTH_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: backstage-secrets
+              key: AUTH_SECRET
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: backstage-secrets
+              key: GITHUB_TOKEN
+              optional: true
+        - name: AUTH_GITHUB_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: backstage-secrets
+              key: AUTH_GITHUB_CLIENT_ID
+              optional: true
+        - name: AUTH_GITHUB_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: backstage-secrets
+              key: AUTH_GITHUB_CLIENT_SECRET
+              optional: true
+        volumeMounts:
+        - name: app-config
+          mountPath: /app/app-config.yaml
+          subPath: app-config.yaml
+        - name: catalog-config
+          mountPath: /app/catalog
+          readOnly: true
+        # Comando temporal para desarrollo - reemplazar por imagen construida
+        command: 
+        - /bin/sh
+        - -c
+        - |
+          echo "Instalando Backstage..."
+          apk add --no-cache git python3 make g++
+          npm install -g @backstage/cli
+          npm install -g yarn
+          mkdir -p /app
+          cd /app
+          # Aquí irían los comandos para construir Backstage
+          echo "Backstage configurado para ejecutar en K8s"
+          sleep infinity  # Temporal para desarrollo
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 7007
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 7007
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+          requests:
+            cpu: 100m
+            memory: 512Mi
+      volumes:
+      - name: app-config
+        configMap:
+          name: backstage-config
+      - name: catalog-config
+        configMap:
+          name: backstage-catalog
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backstage
+  namespace: backstage
+  labels:
+    app.kubernetes.io/name: backstage
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: backstage
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 7007
+    protocol: TCP
+    name: backend
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+    name: frontend
+  selector:
+    app.kubernetes.io/name: backstage
+    app.kubernetes.io/component: frontend

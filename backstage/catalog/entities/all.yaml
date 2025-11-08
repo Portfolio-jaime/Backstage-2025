@@ -1,0 +1,11 @@
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: example-entities
+  description: Una colección de entidades de ejemplo
+spec:
+  targets:
+    - ./users.yaml
+    - ./groups.yaml
+    - ./components.yaml
+    - ./resources.yaml

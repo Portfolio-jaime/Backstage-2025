@@ -1,0 +1,26 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: example-service
+  description: Un microservicio de ejemplo
+  annotations:
+    github.com/project-slug: example/example-service
+    argocd/app-name: example-service
+spec:
+  type: service
+  lifecycle: experimental
+  owner: dev-team
+  system: example-system
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: example-website
+  description: Un website frontend de ejemplo
+  annotations:
+    github.com/project-slug: example/example-website
+spec:
+  type: website
+  lifecycle: experimental
+  owner: dev-team
+  system: example-system

@@ -1,0 +1,10 @@
+# Namespace para Backstage
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: backstage
+  labels:
+    name: backstage
+    app.kubernetes.io/name: backstage
+    app.kubernetes.io/part-of: backstage

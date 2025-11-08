@@ -1,0 +1,177 @@
+# APIs definidas en el sistema
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: example-api
+  description: API REST del microservicio de ejemplo
+  annotations:
+    github.com/project-slug: example/microservice
+  tags:
+    - rest
+    - openapi
+    - v1
+spec:
+  type: openapi
+  lifecycle: experimental
+  owner: backend-team
+  system: example-system
+  definition: |
+    openapi: 3.0.3
+    info:
+      title: Example API
+      description: API de ejemplo para demostración
+      version: 1.0.0
+    servers:
+      - url: http://localhost:7007/api
+        description: Development server
+      - url: https://api.example.com/v1
+        description: Production server
+    paths:
+      /health:
+        get:
+          summary: Health check endpoint
+          responses:
+            '200':
+              description: Service is healthy
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: "ok"
+      /users:
+        get:
+          summary: Get all users
+          responses:
+            '200':
+              description: List of users
+              content:
+                application/json:
+                  schema:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+        post:
+          summary: Create a new user
+          requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/CreateUser'
+          responses:
+            '201':
+              description: User created successfully
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/User'
+    components:
+      schemas:
+        User:
+          type: object
+          properties:
+            id:
+              type: integer
+              example: 1
+            name:
+              type: string
+              example: "John Doe"
+            email:
+              type: string
+              format: email
+              example: "john@example.com"
+        CreateUser:
+          type: object
+          required:
+            - name
+            - email
+          properties:
+            name:
+              type: string
+              example: "John Doe"
+            email:
+              type: string
+              format: email
+              example: "john@example.com"
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: backstage-api
+  description: API del backend de Backstage
+  tags:
+    - backstage
+    - platform
+    - rest
+spec:
+  type: openapi
+  lifecycle: experimental
+  owner: platform-team
+  system: platform-system
+  definition: |
+    openapi: 3.0.3
+    info:
+      title: Backstage API
+      description: API del backend de Backstage
+      version: 1.0.0
+    servers:
+      - url: http://localhost:7007
+        description: Development server
+    paths:
+      /api/health:
+        get:
+          summary: Health check
+          responses:
+            '200':
+              description: Health status
+      /api/catalog:
+        get:
+          summary: Get catalog entities
+          responses:
+            '200':
+              description: List of entities
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: argocd-api
+  description: ArgoCD REST API
+  annotations:
+    argocd/instance: default
+  tags:
+    - argocd
+    - gitops
+    - rest
+spec:
+  type: openapi
+  lifecycle: production
+  owner: platform-team
+  system: platform-system
+  definition: |
+    openapi: 3.0.3
+    info:
+      title: ArgoCD API
+      description: ArgoCD Server API
+      version: v1
+    servers:
+      - url: https://argocd.test.com/api/v1
+        description: Local ArgoCD instance
+    paths:
+      /applications:
+        get:
+          summary: List applications
+          responses:
+            '200':
+              description: List of ArgoCD applications
+      /session:
+        post:
+          summary: Create session
+          responses:
+            '200':
+              description: Session token

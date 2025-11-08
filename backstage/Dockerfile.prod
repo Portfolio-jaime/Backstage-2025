@@ -1,0 +1,78 @@
+# Dockerfile para construir imagen de Backstage para producción
+FROM node:18-alpine as build
+
+# Instalar dependencias del sistema
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    make \
+    g++ \
+    git \
+    curl
+
+# Establecer directorio de trabajo
+WORKDIR /app
+
+# Instalar Backstage CLI globalmente
+RUN npm install -g @backstage/cli@latest yarn
+
+# Copiar archivos de configuración de packages
+COPY package*.json yarn.lock ./
+COPY packages packages/
+COPY plugins plugins/
+COPY catalog catalog/
+COPY configs configs/
+
+# Instalar dependencias
+RUN yarn install --frozen-lockfile --production=false
+
+# Construir la aplicación
+RUN yarn build
+
+# Imagen de producción
+FROM node:18-alpine as runtime
+
+# Instalar dependencias del sistema mínimas
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    git \
+    curl \
+    dumb-init
+
+# Crear usuario no root
+RUN addgroup -g 1001 backstage && \
+    adduser -D -s /bin/bash -u 1001 -G backstage backstage
+
+# Establecer directorio de trabajo
+WORKDIR /app
+
+# Copiar aplicación construida
+COPY --from=build --chown=backstage:backstage /app/packages/backend/dist/bundle.tar.gz .
+RUN tar -xzf bundle.tar.gz && rm bundle.tar.gz
+
+# Copiar archivos de configuración
+COPY --from=build --chown=backstage:backstage /app/catalog ./catalog
+COPY --from=build --chown=backstage:backstage /app/configs ./configs
+
+# Copiar frontend construido (si existe)
+COPY --from=build --chown=backstage:backstage /app/packages/app/dist ./public
+
+# Cambiar a usuario backstage
+USER backstage
+
+# Variables de entorno
+ENV NODE_ENV=production
+ENV NODE_OPTIONS="--max-old-space-size=2048"
+
+# Exponer puertos
+EXPOSE 7007
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:7007/api/health || exit 1
+
+# Comando de inicio usando dumb-init
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "packages/backend", "--config", "configs/app-config.yaml"]
