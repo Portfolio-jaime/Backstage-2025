@@ -26,7 +26,7 @@ spec:
       containers:
       - name: backstage
         # Puedes construir tu propia imagen o usar una base
-        image: docker.io/jaimehenao8126/backstage:main-6939c24
+        image: docker.io/jaimehenao8126/backstage:latest
         imagePullPolicy: Always
         # image: node:18-alpine  # Imagen base para desarrollo
         ports:
