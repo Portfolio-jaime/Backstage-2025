@@ -110,14 +110,14 @@ spec:
         - packages/backend
         livenessProbe:
           httpGet:
-            path: /api/health
+            path: /
             port: 7007
           initialDelaySeconds: 60
           periodSeconds: 30
           timeoutSeconds: 10
         readinessProbe:
           httpGet:
-            path: /api/health
+            path: /
             port: 7007
           initialDelaySeconds: 30
           periodSeconds: 10
