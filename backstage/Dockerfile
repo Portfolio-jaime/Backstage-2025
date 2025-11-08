@@ -2,17 +2,17 @@
 FROM node:22-bookworm-slim AS packages
 
 WORKDIR /app
-COPY package.json yarn.lock ./
-COPY .yarn ./.yarn
-COPY .yarnrc.yml ./
-COPY backstage.json ./
+COPY backstage/package.json backstage/yarn.lock ./
+COPY backstage/.yarn ./.yarn
+COPY backstage/.yarnrc.yml ./
+COPY backstage/backstage.json ./
 
 # Copy package.json files for all packages
-COPY packages packages
+COPY backstage/packages packages
 
 # Only copy plugins if it contains actual Backstage plugins with package.json
 # For now, skip plugins as they don't follow Backstage plugin structure
-# COPY plugins ./plugins
+# COPY backstage/plugins ./plugins
 
 # Install dependencies
 RUN --mount=type=cache,target=/home/node/.cache/yarn,sharing=locked,uid=1000,gid=1000 \
@@ -37,9 +37,9 @@ WORKDIR /app
 COPY --from=packages --chown=node:node /app /app
 
 # Copy application source
-COPY --chown=node:node app-config*.yaml ./
-COPY --chown=node:node catalog ./catalog
-COPY --chown=node:node examples ./examples
+COPY --chown=node:node backstage/app-config*.yaml ./
+COPY --chown=node:node backstage/catalog ./catalog
+COPY --chown=node:node backstage/examples ./examples
 
 # Build the application
 RUN yarn build:backend
