@@ -19,9 +19,10 @@ images:
     newName: docker.io/jaimehenao8126/backstage
     newTag: latest
 
-patchesStrategicMerge:
-  - patches/production.yaml
+patches:
+  - path: patches/production.yaml
 
-commonLabels:
-  app: backstage
-  managed-by: argocd
+labels:
+  - pairs:
+      app: backstage
+      managed-by: argocd
