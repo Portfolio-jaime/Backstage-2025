@@ -1,0 +1,148 @@
+name: Build and Deploy Backstage
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backstage/packages/**'
+      - 'backstage/plugins/**'
+      - 'backstage/app-config*.yaml'
+      - 'backstage/package.json'
+      - 'backstage/yarn.lock'
+      - 'backstage/Dockerfile*'
+      - 'backstage/kubernetes/**'
+  pull_request:
+    branches:
+      - main
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: jaimehenao8126/backstage
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Change to backstage directory
+      run: cd backstage
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'yarn'
+        cache-dependency-path: 'backstage/yarn.lock'
+
+    - name: Install dependencies
+      run: |
+        cd backstage
+        yarn install --frozen-lockfile
+
+    - name: Run tests
+      run: |
+        cd backstage
+        yarn test:all --passWithNoTests
+
+    - name: Build backend
+      run: |
+        cd backstage
+        yarn build:backend
+
+    - name: Log in to Docker Hub
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Extract metadata (tags, labels) for Docker
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backstage
+        file: ./backstage/Dockerfile
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+
+  update-manifests:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Update Kubernetes manifests
+      run: |
+        # Extract the SHA tag from the built image
+        IMAGE_TAG=$(echo "${{ needs.build-and-push.outputs.image-tag }}" | grep -E "main-[a-f0-9]{7}" | head -1)
+        
+        if [ -z "$IMAGE_TAG" ]; then
+          echo "No SHA-based tag found, using latest"
+          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+        fi
+        
+        echo "Updating image to: $IMAGE_TAG"
+        
+        # Update the image in the Kubernetes manifest
+        sed -i "s|image: .*backstage.*|image: $IMAGE_TAG|g" backstage/kubernetes/backstage.yaml
+        
+        # Update kustomization.yaml if it exists
+        if [ -f backstage/kubernetes/kustomization.yaml ]; then
+          sed -i "s|newTag: .*|newTag: $(echo $IMAGE_TAG | cut -d':' -f2)|g" backstage/kubernetes/kustomization.yaml
+        fi
+
+    - name: Commit and push changes
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        if git diff --exit-code backstage/kubernetes/; then
+          echo "No changes to commit"
+        else
+          git add backstage/kubernetes/
+          git commit -m "Update Backstage image to $(echo '${{ needs.build-and-push.outputs.image-tag }}' | grep -E 'main-[a-f0-9]{7}' | head -1 | cut -d':' -f2)"
+          git push
+        fi
+
+  notify-argocd:
+    needs: [build-and-push, update-manifests]
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    
+    steps:
+    - name: Trigger ArgoCD sync
+      run: |
+        echo "Triggering ArgoCD sync for backstage application"
+        # ArgoCD CLI o API call para forzar sync
+        # curl -X POST "https://argocd.test.com/api/v1/applications/backstage/sync" \
+        #   -H "Authorization: Bearer ${{ secrets.ARGOCD_TOKEN }}" \
+        #   -H "Content-Type: application/json" \
+        #   -d '{"prune": false, "dryRun": false}'
