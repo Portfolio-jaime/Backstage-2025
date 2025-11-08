@@ -26,8 +26,8 @@ spec:
       containers:
       - name: backstage
         # Puedes construir tu propia imagen o usar una base
-        image: docker.io/jaimehenao8126/backstage:latest
-        imagePullPolicy: IfNotPresent
+        image: docker.io/jaimehenao8126/backstage:main-6939c24
+        imagePullPolicy: Always
         # image: node:18-alpine  # Imagen base para desarrollo
         ports:
         - containerPort: 7007
@@ -104,20 +104,10 @@ spec:
         - name: catalog-config
           mountPath: /app/catalog
           readOnly: true
-        # Comando temporal para desarrollo - reemplazar por imagen construida
+        # Comando para ejecutar Backstage construido
         command: 
-        - /bin/sh
-        - -c
-        - |
-          echo "Instalando Backstage..."
-          apk add --no-cache git python3 make g++
-          npm install -g @backstage/cli
-          npm install -g yarn
-          mkdir -p /app
-          cd /app
-          # Aquí irían los comandos para construir Backstage
-          echo "Backstage configurado para ejecutar en K8s"
-          sleep infinity  # Temporal para desarrollo
+        - node
+        - packages/backend
         livenessProbe:
           httpGet:
             path: /api/health
@@ -130,14 +120,14 @@ spec:
             path: /api/health
             port: 7007
           initialDelaySeconds: 30
-          periodSeconds: 15
+          periodSeconds: 10
           timeoutSeconds: 5
         resources:
           limits:
-            cpu: 1000m
+            cpu: 500m
             memory: 1Gi
           requests:
-            cpu: 100m
+            cpu: 250m
             memory: 512Mi
       volumes:
       - name: app-config

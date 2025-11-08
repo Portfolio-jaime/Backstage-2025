@@ -101,8 +101,11 @@ jobs:
 
     - name: Update Kubernetes manifests
       run: |
-        # Extract the SHA tag from the built image
-        IMAGE_TAG=$(echo "${{ needs.build-and-push.outputs.image-tag }}" | grep -E "main-[a-f0-9]{7}" | head -1)
+        # Debug: Show all generated tags
+        echo "Generated tags: ${{ needs.build-and-push.outputs.image-tag }}"
+        
+        # Extract the SHA tag from the built image (format: main-sha)
+        IMAGE_TAG=$(echo "${{ needs.build-and-push.outputs.image-tag }}" | tr ',' '\n' | grep -E "main-[a-f0-9]{7}" | head -1)
         
         if [ -z "$IMAGE_TAG" ]; then
           echo "No SHA-based tag found, using latest"
@@ -112,7 +115,7 @@ jobs:
         echo "Updating image to: $IMAGE_TAG"
         
         # Update the image in the Kubernetes manifest
-        sed -i "s|image: .*backstage.*|image: $IMAGE_TAG|g" backstage/kubernetes/backstage.yaml
+        sed -i "s|image: docker.io/jaimehenao8126/backstage:.*|image: $IMAGE_TAG|g" backstage/kubernetes/backstage.yaml
         
         # Update kustomization.yaml if it exists
         if [ -f backstage/kubernetes/kustomization.yaml ]; then
@@ -128,7 +131,12 @@ jobs:
           echo "No changes to commit"
         else
           git add backstage/kubernetes/
-          git commit -m "Update Backstage image to $(echo '${{ needs.build-and-push.outputs.image-tag }}' | grep -E 'main-[a-f0-9]{7}' | head -1 | cut -d':' -f2)"
+          # Extract tag for commit message
+          TAG=$(echo '${{ needs.build-and-push.outputs.image-tag }}' | tr ',' '\n' | grep -E 'main-[a-f0-9]{7}' | head -1 | cut -d':' -f2)
+          if [ -z "$TAG" ]; then
+            TAG="latest"
+          fi
+          git commit -m "Update Backstage image to $TAG"
           git push
         fi
 
