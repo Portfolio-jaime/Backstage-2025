@@ -66,7 +66,4 @@ backend.add(import('@backstage/plugin-signals-backend'));
 // argocd plugin
 backend.add(import('@roadiehq/backstage-plugin-argo-cd-backend'));
 
-// health check endpoint - ensure it's available for kubernetes probes
-backend.add(import('@backstage/plugin-app-backend/alpha'));
-
 backend.start();
