@@ -9,7 +9,10 @@ COPY backstage.json ./
 
 # Copy package.json files for all packages
 COPY packages packages
-COPY plugins plugins
+
+# Only copy plugins if it contains actual Backstage plugins with package.json
+# For now, skip plugins as they don't follow Backstage plugin structure
+# COPY plugins ./plugins
 
 # Install dependencies
 RUN --mount=type=cache,target=/home/node/.cache/yarn,sharing=locked,uid=1000,gid=1000 \

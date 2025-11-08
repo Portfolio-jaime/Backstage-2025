@@ -1,6 +1,6 @@
 ---
 description: 'DevX Backstage Platform Engineering - Specialized mode for developing Backstage as an Internal Developer Platform (IDP) solution with focus on automation, DevOps, and platform engineering'
-tools: []
+tools: ['kubectl', 'git', 'bash', 'docker', 'yarn', 'node', 'psql', 'argocd', 'gh', 'code', 'grep', 'sh']
 ---
 
 # 🚀 DevX Backstage Platform Engineering Mode
