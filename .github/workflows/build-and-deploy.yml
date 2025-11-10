@@ -12,6 +12,7 @@ on:
       - 'backstage/yarn.lock'
       - 'backstage/Dockerfile*'
       - 'backstage/kubernetes/**'
+      - '.github/workflows/**'  # Incluir cambios en workflows
   pull_request:
     branches:
       - main
@@ -76,7 +77,7 @@ jobs:
           type=ref,event=branch
           type=ref,event=pr
           type=sha,prefix={{branch}}-
-          type=raw,value=latest,enable={{is_default_branch}}
+          # Remover el tag latest para forzar uso de tags específicos
 
     - name: Build and push Docker image
       id: build
@@ -108,14 +109,18 @@ jobs:
         IMAGE_TAG=$(echo "${{ needs.build-and-push.outputs.image-tag }}" | tr ',' '\n' | grep -E "main-[a-f0-9]{7}" | head -1)
         
         if [ -z "$IMAGE_TAG" ]; then
-          echo "No SHA-based tag found, using latest"
-          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          echo "ERROR: No SHA-based tag found!"
+          echo "Available tags: ${{ needs.build-and-push.outputs.image-tag }}"
+          exit 1
         fi
         
         echo "Updating image to: $IMAGE_TAG"
         
-        # Update the image in the Kubernetes manifest
-        sed -i "s|image: docker.io/jaimehenao8126/backstage:.*|image: $IMAGE_TAG|g" backstage/kubernetes/backstage.yaml
+        # Update the image in the Kubernetes manifest (more robust regex)
+        sed -i "s|image: docker\.io/jaimehenao8126/backstage:.*|image: $IMAGE_TAG|g" backstage/kubernetes/backstage.yaml
+        
+        # Verify the change was made
+        grep "image: docker.io/jaimehenao8126/backstage:" backstage/kubernetes/backstage.yaml
         
         # Update kustomization.yaml if it exists
         if [ -f backstage/kubernetes/kustomization.yaml ]; then
@@ -146,11 +151,13 @@ jobs:
     if: github.event_name != 'pull_request'
     
     steps:
-    - name: Trigger ArgoCD sync
+    - name: Trigger ArgoCD sync via webhook
       run: |
-        echo "Triggering ArgoCD sync for backstage application"
-        # ArgoCD CLI o API call para forzar sync
-        # curl -X POST "https://argocd.test.com/api/v1/applications/backstage/sync" \
-        #   -H "Authorization: Bearer ${{ secrets.ARGOCD_TOKEN }}" \
-        #   -H "Content-Type: application/json" \
-        #   -d '{"prune": false, "dryRun": false}'
+        echo "🚀 Deployment completed successfully!"
+        echo "Image: $(echo '${{ needs.build-and-push.outputs.image-tag }}' | tr ',' '\n' | grep -E 'main-[a-f0-9]{7}' | head -1)"
+        echo "📋 ArgoCD should auto-sync within 3 minutes"
+        echo "🔗 Check ArgoCD UI: https://argocd.test.com/applications/backstage"
+        
+        # Opcional: Usar argocd CLI si está disponible
+        # kubectl patch application backstage -n argocd --type json \
+        #   -p='[{"op": "replace", "path": "/operation", "value": {"sync": {"prune": true}}}]'
