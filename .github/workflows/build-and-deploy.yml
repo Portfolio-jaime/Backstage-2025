@@ -75,9 +75,11 @@ jobs:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         tags: |
           type=ref,event=branch
-          type=ref,event=pr
-          type=sha,prefix={{branch}}-
-          # Remover el tag latest para forzar uso de tags específicos
+          type=ref,event=pr  
+          type=sha,prefix={{branch}}-,format=short
+          # No incluir latest para forzar uso de tags específicos
+        flavor: |
+          latest=false
 
     - name: Build and push Docker image
       id: build
@@ -102,30 +104,42 @@ jobs:
 
     - name: Update Kubernetes manifests
       run: |
-        # Debug: Show all generated tags
+        # Debug: Show all information
+        echo "Branch: ${{ github.ref_name }}"
+        echo "SHA: ${{ github.sha }}"
         echo "Generated tags: ${{ needs.build-and-push.outputs.image-tag }}"
         
-        # Extract the SHA tag from the built image (format: main-sha)
-        IMAGE_TAG=$(echo "${{ needs.build-and-push.outputs.image-tag }}" | tr ',' '\n' | grep -E "main-[a-f0-9]{7}" | head -1)
+        # Generate the expected tag format: main-shortsha
+        SHORT_SHA="${{ github.sha }}"
+        SHORT_SHA="${SHORT_SHA:0:7}"
+        EXPECTED_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}-${SHORT_SHA}"
+        
+        echo "Expected tag: $EXPECTED_TAG"
+        
+        # Verify the tag exists in the outputs
+        if [[ "${{ needs.build-and-push.outputs.image-tag }}" == *"${EXPECTED_TAG}"* ]]; then
+          echo "✅ Tag found in outputs"
+          IMAGE_TAG="$EXPECTED_TAG"
+        else
+          echo "❌ Expected tag not found in outputs, using first SHA-based tag"
+          # Fallback: extract any tag with the pattern main-shortsha
+          IMAGE_TAG=$(echo "${{ needs.build-and-push.outputs.image-tag }}" | tr ',' '\n' | grep -E "${REGISTRY}/${IMAGE_NAME}:main-[a-f0-9]{7}" | head -1)
+        fi
         
         if [ -z "$IMAGE_TAG" ]; then
-          echo "ERROR: No SHA-based tag found!"
+          echo "ERROR: No valid image tag found!"
           echo "Available tags: ${{ needs.build-and-push.outputs.image-tag }}"
           exit 1
         fi
         
-        echo "Updating image to: $IMAGE_TAG"
+        echo "Using image tag: $IMAGE_TAG"
         
-        # Update the image in the Kubernetes manifest (more robust regex)
+        # Update the image in the Kubernetes manifest
         sed -i "s|image: docker\.io/jaimehenao8126/backstage:.*|image: $IMAGE_TAG|g" backstage/kubernetes/backstage.yaml
         
         # Verify the change was made
+        echo "Updated manifest:"
         grep "image: docker.io/jaimehenao8126/backstage:" backstage/kubernetes/backstage.yaml
-        
-        # Update kustomization.yaml if it exists
-        if [ -f backstage/kubernetes/kustomization.yaml ]; then
-          sed -i "s|newTag: .*|newTag: $(echo $IMAGE_TAG | cut -d':' -f2)|g" backstage/kubernetes/kustomization.yaml
-        fi
 
     - name: Commit and push changes
       run: |
