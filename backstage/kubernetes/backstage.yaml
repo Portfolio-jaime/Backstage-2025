@@ -26,8 +26,8 @@ spec:
       serviceAccountName: backstage
       containers:
       - name: backstage
-        # Puedes construir tu propia imagen o usar una base
-        image: docker.io/jaimehenao8126/backstage:latest
+        # Usar tag específico en lugar de latest para GitOps
+        image: docker.io/jaimehenao8126/backstage:main-ac4044e
         imagePullPolicy: Always
         # image: node:18-alpine  # Imagen base para desarrollo
         ports:
