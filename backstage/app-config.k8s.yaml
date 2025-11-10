@@ -1,0 +1,85 @@
+app:
+  title: Backstage Platform
+  baseUrl: http://localhost:3000
+
+organization:
+  name: Portfolio Jaime
+
+backend:
+  baseUrl: http://localhost:7007
+  listen:
+    port: 7007
+  cors:
+    origin: http://localhost:3000
+    methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
+    credentials: true
+
+  database:
+    client: pg
+    connection:
+      host: ${POSTGRES_HOST}
+      port: ${POSTGRES_PORT}
+      user: ${POSTGRES_USER}
+      password: ${POSTGRES_PASSWORD}
+      database: ${POSTGRES_DB}
+
+# Integrations disabled for now - can be enabled with proper tokens
+integrations: {}
+
+proxy:
+  endpoints:
+    '/argocd/api':
+      target: '${ARGOCD_URL}/api'
+      changeOrigin: true
+      headers:
+        Authorization: 'Basic ${ARGOCD_AUTH_TOKEN}'
+
+techdocs:
+  builder: 'local'
+  generator:
+    runIn: 'docker'
+  publisher:
+    type: 'local'
+
+auth:
+  providers:
+    guest: {}
+
+scaffolder:
+  # GitHub integration disabled, using local templates only
+
+catalog:
+  import:
+    entityFilename: catalog-info.yaml
+    pullRequestBranchName: backstage-integration
+  rules:
+    - allow: [Component, System, API, Resource, Location]
+  locations:
+    # Local example data
+    - type: file
+      target: /app/catalog/entities/all.yaml
+    - type: file
+      target: /app/catalog/systems/systems.yaml
+    - type: file
+      target: /app/catalog/templates/template.yaml
+      rules:
+        - allow: [Template]
+
+kubernetes:
+  serviceLocatorMethod:
+    type: 'multiTenant'
+  clusterLocatorMethods:
+    - type: 'config'
+      clusters:
+        - url: https://kubernetes.default.svc.cluster.local
+          name: local-cluster
+          authProvider: 'serviceAccount'
+
+permission:
+  enabled: false  # Disable for now to avoid auth issues
+
+argocd:
+  username: ${ARGOCD_USERNAME}
+  password: ${ARGOCD_PASSWORD}
+  url: ${ARGOCD_URL}
+  waitCycles: 25

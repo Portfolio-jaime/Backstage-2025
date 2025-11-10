@@ -42,10 +42,8 @@ data:
         store: redis
         connection: redis://redis:6379
 
-    integrations:
-      github:
-        - host: github.com
-          token: ${GITHUB_TOKEN}
+    # Integrations temporarily disabled to avoid GitHub token issues
+    integrations: {}
 
     argocd:
       username: ${ARGOCD_USERNAME}
@@ -76,10 +74,7 @@ data:
         secret: ${AUTH_SECRET}
       
       providers:
-        github:
-          production:
-            clientId: ${AUTH_GITHUB_CLIENT_ID}
-            clientSecret: ${AUTH_GITHUB_CLIENT_SECRET}
+        guest: {}
 
     catalog:
       readonly: false
