@@ -21,4 +21,11 @@ spec:
     syncOptions:
     - CreateNamespace=true
     - PruneLast=true
+    hooks:
+      - type: PostSync
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            kubectl get rs -n backstage | awk '$2==0 {print $1}' | xargs -r kubectl delete rs -n backstage
+            kubectl get pods -n backstage --field-selector=status.phase!=Running | grep backstage | awk '{print $1}' | xargs -r kubectl delete pod -n backstage
   revisionHistoryLimit: 5
