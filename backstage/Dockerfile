@@ -14,21 +14,37 @@ COPY backstage/packages packages
 # For now, skip plugins as they don't follow Backstage plugin structure
 # COPY backstage/plugins ./plugins
 
-# Install dependencies
+# Install dependencies with optimized settings for cross-platform builds
 RUN --mount=type=cache,target=/home/node/.cache/yarn,sharing=locked,uid=1000,gid=1000 \
-    yarn install --immutable
+    --mount=type=cache,target=/tmp/.npm,sharing=locked,uid=1000,gid=1000 \
+    yarn install --immutable --network-timeout 300000
 
 FROM node:22-bookworm-slim AS build
 
 # Set Python interpreter for `node-gyp` to use
 ENV PYTHON=/usr/bin/python3
 
-# Install isolate-vm dependencies, these are needed by the @backstage/plugin-scaffolder-backend.
+# Install build dependencies for both AMD64 and ARM64 architectures
+# Include additional packages needed for cross-compilation
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && \
-    apt-get install -y --no-install-recommends python3 g++ build-essential && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends \
+    python3 \
+    g++ \
+    build-essential \
+    make \
+    git \
+    ca-certificates \
+    libc6-dev \
+    pkg-config \
+    libnode-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configure yarn and npm for better ARM64 compatibility
+ENV npm_config_target_platform="linux"
+ENV npm_config_cache="/tmp/.npm"
+ENV YARN_CACHE_FOLDER="/tmp/.yarn-cache"
 
 USER node
 WORKDIR /app
@@ -41,24 +57,24 @@ COPY --chown=node:node backstage/app-config*.yaml ./
 COPY --chown=node:node backstage/catalog ./catalog
 COPY --chown=node:node backstage/examples ./examples
 
-# Build the application
+# Build the application with increased memory for ARM64 builds
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN yarn build:backend
 
 FROM node:22-bookworm-slim AS runtime
 
-# Install isolate-vm dependencies, these are needed by the @backstage/plugin-scaffolder-backend.
+# Install runtime dependencies for both architectures
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && \
-    apt-get install -y --no-install-recommends python3 g++ build-essential && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install sqlite3 dependencies and curl for health checks
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && \
-    apt-get install -y --no-install-recommends libsqlite3-dev curl && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends \
+    python3 \
+    g++ \
+    build-essential \
+    libsqlite3-dev \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # From here on we use the least-privileged `node` user to run the backend.
 USER node
@@ -81,9 +97,10 @@ ENV NODE_ENV=production
 # This disables node snapshot for Node 20+ to work with the Scaffolder
 ENV NODE_OPTIONS="--no-node-snapshot"
 
-# Install only production dependencies
+# Install only production dependencies with timeout for ARM64
 RUN --mount=type=cache,target=/home/node/.cache/yarn,sharing=locked,uid=1000,gid=1000 \
-    yarn workspaces focus --all --production && rm -rf "$(yarn cache clean)"
+    yarn workspaces focus --all --production --network-timeout 300000 && \
+    yarn cache clean
 
 # Copy any other files that the backend needs to run.
 COPY --from=build --chown=node:node /app/examples ./examples
