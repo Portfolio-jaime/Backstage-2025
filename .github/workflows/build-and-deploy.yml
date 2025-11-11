@@ -40,7 +40,7 @@ jobs:
       - name: Build backend
         run: |
           cd backstage
-          yarn build:backend --skip-tests
+          yarn build:backend
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
