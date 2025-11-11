@@ -2,12 +2,8 @@ name: Build and Deploy Backstage
 
 on:
   push:
-    branches: [ main ]
-    paths:
-      - 'backstage/**'
-      - '.github/workflows/build-and-deploy.yml'
-  pull_request:
-    branches: [ main ]
+    branches:
+      - main
     paths:
       - 'backstage/**'
       - '.github/workflows/build-and-deploy.yml'
@@ -23,143 +19,92 @@ jobs:
     permissions:
       contents: read
       packages: write
-
     outputs:
-      image-tag: ${{ steps.set-tag.outputs.image-tag }}
-      image-digest: ${{ steps.build.outputs.digest }}
-
+      image_tag: ${{ steps.export-tag.outputs.image_tag }}
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '22'
-        cache: 'yarn'
-        cache-dependency-path: 'backstage/yarn.lock'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'yarn'
+          cache-dependency-path: 'backstage/yarn.lock'
 
-    - name: Install dependencies
-      run: |
-        cd backstage
-        yarn install --frozen-lockfile || echo "⚠️ Dependencies installation failed but continuing..."
+      - name: Install dependencies
+        run: |
+          cd backstage
+          yarn install --frozen-lockfile
 
-    - name: Build backend (skip tests for now)
-      run: |
-        cd backstage
-        yarn build:backend --skip-tests || echo "⚠️ Build failed but continuing for tag generation..."
+      - name: Build backend
+        run: |
+          cd backstage
+          yarn build:backend --skip-tests
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Log in to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Set image tag
-      id: set-tag
-      run: |
-        # Debug environment variables
-        echo "🔍 Debug GitHub environment:"
-        echo "GITHUB_REF: $GITHUB_REF"
-        echo "GITHUB_SHA: $GITHUB_SHA"
-        echo "REGISTRY: ${{ env.REGISTRY }}"
-        echo "IMAGE_NAME: ${{ env.IMAGE_NAME }}"
+      - name: Generate image tag
+        id: export-tag
+        run: |
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${BRANCH_NAME}-${SHORT_SHA}"
+          echo "IMAGE_TAG=$IMAGE_TAG"
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-        # Create tag with branch and short SHA
-        BRANCH_NAME="${GITHUB_REF#refs/heads/}"
-        SHORT_SHA="${GITHUB_SHA::7}"
-        IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${BRANCH_NAME}-${SHORT_SHA}"
-
-        echo "🏷️ Generated components:"
-        echo "  BRANCH_NAME: $BRANCH_NAME"
-        echo "  SHORT_SHA: $SHORT_SHA"
-        echo "  IMAGE_TAG: $IMAGE_TAG"
-
-        # Set output using GitHub Actions compatible syntax (sin espacios ni comillas)
-        echo "image-tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
-
-        # Debug: mostrar el valor y el archivo de output
-        echo "IMAGE_TAG: $IMAGE_TAG"
-        echo "GITHUB_OUTPUT contents:"
-        cat $GITHUB_OUTPUT
-
-    - name: Build and push Docker image
-      id: build
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: ./backstage/Dockerfile
-        push: ${{ github.event_name != 'pull_request' }}
-        tags: ${{ steps.set-tag.outputs.image-tag }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./backstage/Dockerfile
+          push: true
+          tags: ${{ steps.export-tag.outputs.image_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   update-manifests:
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    
+    if: github.ref == 'refs/heads/main'
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Debug received outputs
-      run: |
-        echo "Received image-tag: '${{ needs.build-and-push.outputs.image-tag }}'"
-        echo "Received image-digest: '${{ needs.build-and-push.outputs.image-digest }}'"
+      - name: Debug received outputs
+        run: |
+          echo "Received image_tag: '${{ needs.build-and-push.outputs.image_tag }}'"
 
-    - name: Update Kubernetes manifests
-      run: |
-        # Debug: Show all information
-        echo "🔍 Debug second job environment:"
-        echo "  Branch: ${GITHUB_REF#refs/heads/}"
-        echo "  SHA: $GITHUB_SHA"
-        echo "  Build job outputs:"
-        echo "    image-tag: '${{ needs.build-and-push.outputs.image-tag }}'"
-        echo "    image-digest: '${{ needs.build-and-push.outputs.image-digest }}'"
-        
-        IMAGE_TAG="${{ needs.build-and-push.outputs.image-tag }}"
-        
-        echo "🏷️ Received IMAGE_TAG: '$IMAGE_TAG'"
-        echo "📏 IMAGE_TAG length: ${#IMAGE_TAG}"
-        
-        if [ -z "$IMAGE_TAG" ]; then
-          echo "❌ ERROR: No image tag provided from build job!"
-          echo "🔍 Checking if build job completed successfully..."
-          exit 1
-        fi
-        
-        echo "✅ Updating image to: $IMAGE_TAG"
-        
-        # Update the image in the Kubernetes manifest
-        sed -i "s|image: docker\.io/jaimehenao8126/backstage:.*|image: $IMAGE_TAG|g" backstage/kubernetes/backstage.yaml
-        
-        # Verify the change was made
-        echo "🔍 Verification - Current image line:"
-        grep "image: docker.io/jaimehenao8126/backstage:" backstage/kubernetes/backstage.yaml
-        
-    - name: Commit and push changes
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        
-        if git diff --quiet; then
-          echo "No changes to commit"
-          exit 0
-        fi
-        
-        git add backstage/kubernetes/backstage.yaml
-        git commit -m "chore: update backstage image to ${{ needs.build-and-push.outputs.image-tag }}"
-        git push
+      - name: Update Kubernetes manifests
+        run: |
+          IMAGE_TAG="${{ needs.build-and-push.outputs.image_tag }}"
+          echo "Updating image to: $IMAGE_TAG"
+          sed -i "s|image: docker\.io/jaimehenao8126/backstage:.*|image: $IMAGE_TAG|g" backstage/kubernetes/backstage.yaml
+          grep "image: docker.io/jaimehenao8126/backstage:" backstage/kubernetes/backstage.yaml
 
-    - name: Trigger ArgoCD sync (optional)
-      run: |
-        echo "🚀 Image updated successfully!"
-        echo "ArgoCD will automatically detect the changes and sync the application."
-        echo "You can also manually sync via ArgoCD UI or CLI if needed."
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git add backstage/kubernetes/backstage.yaml
+          git commit -m "chore: update backstage image to ${{ needs.build-and-push.outputs.image_tag }}"
+          git push
+
+      - name: Trigger ArgoCD sync (optional)
+        run: |
+          echo "🚀 Image updated successfully!"
+          echo "ArgoCD will automatically detect the changes and sync the application."
