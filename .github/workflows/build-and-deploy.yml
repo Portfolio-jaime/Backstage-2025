@@ -58,8 +58,11 @@ jobs:
           BRANCH_NAME="${GITHUB_REF#refs/heads/}"
           SHORT_SHA="${GITHUB_SHA::7}"
           IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${BRANCH_NAME}-${SHORT_SHA}"
-          echo "IMAGE_TAG=$IMAGE_TAG"
+          echo "🏷️ Generated IMAGE_TAG: $IMAGE_TAG"
           echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "📝 GITHUB_OUTPUT file contents:"
+          cat $GITHUB_OUTPUT
+          echo "🔍 Step output reference will be: steps.export-tag.outputs.image_tag"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -83,14 +86,50 @@ jobs:
 
       - name: Debug received outputs
         run: |
-          echo "Received image_tag: '${{ needs.build-and-push.outputs.image_tag }}'"
+          echo "🔍 All job outputs from build-and-push:"
+          echo "  needs.build-and-push.outputs.image_tag = '${{ needs.build-and-push.outputs.image_tag }}'"
+          echo "🔍 GitHub context info:"
+          echo "  GITHUB_REF = $GITHUB_REF"
+          echo "  GITHUB_SHA = $GITHUB_SHA"
+          echo "🧪 Testing output reference..."
+          if [ -z "${{ needs.build-and-push.outputs.image_tag }}" ]; then
+            echo "❌ ERROR: image_tag output is empty!"
+            echo "🔍 Debugging steps:"
+            echo "  1. Check if build-and-push job completed successfully"
+            echo "  2. Verify step ID 'export-tag' exists"
+            echo "  3. Check GITHUB_OUTPUT file was written correctly"
+            exit 1
+          else
+            echo "✅ image_tag output received: '${{ needs.build-and-push.outputs.image_tag }}'"
+          fi
 
       - name: Update Kubernetes manifests
         run: |
+          # Get the image tag from job output
           IMAGE_TAG="${{ needs.build-and-push.outputs.image_tag }}"
-          echo "Updating image to: $IMAGE_TAG"
+          
+          # Validate image tag is not empty
+          if [ -z "$IMAGE_TAG" ]; then
+            echo "❌ CRITICAL ERROR: IMAGE_TAG is empty"
+            echo "🔍 This means the output from build-and-push job failed"
+            echo "🚨 Stopping execution to prevent invalid manifest update"
+            exit 1
+          fi
+          
+          echo "✅ Using IMAGE_TAG: $IMAGE_TAG"
+          echo "🔧 Updating Kubernetes manifest..."
+          
+          # Update the image in the Kubernetes manifest
           sed -i "s|image: docker\.io/jaimehenao8126/backstage:.*|image: $IMAGE_TAG|g" backstage/kubernetes/backstage.yaml
-          grep "image: docker.io/jaimehenao8126/backstage:" backstage/kubernetes/backstage.yaml
+          
+          # Verify the change was made
+          echo "🔍 Updated manifest content:"
+          grep -n "image: docker.io/jaimehenao8126/backstage:" backstage/kubernetes/backstage.yaml || {
+            echo "❌ ERROR: Could not find updated image line in manifest!"
+            echo "📄 Current manifest content around image:"
+            grep -n -A2 -B2 "image:" backstage/kubernetes/backstage.yaml
+            exit 1
+          }
 
       - name: Commit and push changes
         run: |
