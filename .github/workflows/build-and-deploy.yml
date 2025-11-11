@@ -62,6 +62,9 @@ jobs:
           
           echo "🏷️ Generated IMAGE_TAG: $IMAGE_TAG"
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          
+          # Also export as step output for immediate use
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -69,12 +72,14 @@ jobs:
           context: .
           file: ./backstage/Dockerfile
           push: true
-          tags: ${{ env.IMAGE_TAG }}
+          tags: ${{ steps.docker-build.outputs.image_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Update Kubernetes manifests
         run: |
+          # Get the image tag from the previous step
+          IMAGE_TAG="${{ steps.docker-build.outputs.image_tag }}"
           echo "✅ Using IMAGE_TAG: $IMAGE_TAG"
           echo "🔧 Updating Kubernetes manifest..."
           
@@ -84,24 +89,38 @@ jobs:
           # Verify the change was made
           echo "🔍 Updated manifest content:"
           grep -n "image: docker.io/jaimehenao8126/backstage:" backstage/kubernetes/backstage.yaml
+          
+          # Show git diff to confirm changes
+          echo "🔍 Git diff of changes:"
+          git diff backstage/kubernetes/backstage.yaml
 
       - name: Commit and push changes
         run: |
+          # Get the image tag again for commit message
+          IMAGE_TAG="${{ steps.docker-build.outputs.image_tag }}"
+          
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
           if git diff --quiet; then
-            echo "No changes to commit"
-            exit 0
+            echo "❌ No changes detected - this might be an issue!"
+            echo "🔍 Current manifest content:"
+            grep -n "image:" backstage/kubernetes/backstage.yaml
+            exit 1
           fi
           
+          echo "✅ Changes detected, committing..."
           git add backstage/kubernetes/backstage.yaml
           git commit -m "chore: update backstage image to $IMAGE_TAG"
           git push
+          
+          echo "🔄 Changes pushed to repository - ArgoCD should detect them now"
 
       - name: Success notification
         run: |
+          IMAGE_TAG="${{ steps.docker-build.outputs.image_tag }}"
           echo "🚀 Deployment completed successfully!"
           echo "📦 Docker image: $IMAGE_TAG"
-          echo "🔄 Kubernetes manifest updated"
+          echo "🔄 Kubernetes manifest updated and pushed to git"
           echo "✅ ArgoCD will automatically detect and sync changes"
+          echo "🔍 Check ArgoCD UI: https://argocd.test.com"
