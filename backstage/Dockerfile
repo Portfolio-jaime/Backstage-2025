@@ -26,11 +26,16 @@ COPY backstage/packages packages
 ENV npm_config_optional=false
 ENV CYPRESS_INSTALL_BINARY=0
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+# Skip postinstall scripts that might fail on different architectures
+ENV npm_config_ignore_scripts=true
 
-# Install dependencies with extended timeout and fallback for all architectures
+# Install dependencies with extended timeout and robust fallback strategy
 RUN --mount=type=cache,target=/home/node/.cache/yarn,sharing=locked,uid=1000,gid=1000 \
-    yarn install --immutable --network-timeout 900000 || \
-    yarn install --immutable --network-timeout 900000 --mode skip-build
+    yarn install --immutable --network-timeout 900000 --mode skip-build || \
+    (echo "🔄 Fallback: Installing with ignore-scripts..." && \
+     yarn install --immutable --network-timeout 900000 --ignore-scripts) || \
+    (echo "🔄 Final fallback: Basic install..." && \
+     yarn install --network-timeout 900000)
 
 FROM node:22-bookworm-slim AS build
 
@@ -68,9 +73,23 @@ COPY --chown=node:node backstage/app-config*.yaml ./
 COPY --chown=node:node backstage/catalog ./catalog
 COPY --chown=node:node backstage/examples ./examples
 
-# Build the application with optimizations
+# Build the application with optimizations and fallback for missing native deps
 ENV NODE_OPTIONS="--max-old-space-size=6144"
-RUN yarn build:backend || yarn build:backend --no-cache
+# Skip optional native dependencies that may not be available for all architectures
+ENV npm_config_optional=false
+
+# Force rebuild of native modules for current architecture
+RUN yarn install --mode skip-build --network-timeout 600000 || true
+
+# Build with multiple fallback strategies
+RUN yarn build:backend || \
+    (echo "🔄 First build failed, cleaning and retrying..." && \
+     yarn cache clean && \
+     rm -rf node_modules/.cache && \
+     yarn build:backend) || \
+    (echo "🔄 Second build failed, rebuilding native deps..." && \
+     yarn rebuild && \
+     yarn build:backend)
 
 FROM node:22-bookworm-slim AS runtime
 

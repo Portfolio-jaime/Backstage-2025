@@ -1,0 +1,158 @@
+name: Build and Deploy Backstage (Fixed)
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'backstage/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: jaimehenao8126/backstage
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    
+    steps:
+      - name: 🛎️ Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 🏷️ Generate image tag
+        id: tag
+        run: |
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${BRANCH_NAME}-${SHORT_SHA}"
+          
+          echo "🏷️ Generated IMAGE_TAG: $IMAGE_TAG"
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:v0.12.4
+
+      - name: 🔐 Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 🏗️ Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./backstage/Dockerfile.amd64
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.tag.outputs.image_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+
+      - name: ✅ Verify Docker image
+        run: |
+          IMAGE_TAG="${{ steps.tag.outputs.image_tag }}"
+          echo "🔍 Verifying image: $IMAGE_TAG"
+          
+          # Pull image to verify it exists
+          docker pull "$IMAGE_TAG"
+          
+          # Get image info
+          docker inspect "$IMAGE_TAG" --format='{{.Architecture}} {{.Os}} {{.Size}}' | \
+          while read arch os size; do
+            echo "📦 Architecture: $arch"
+            echo "🖥️ OS: $os" 
+            echo "📏 Size: $(($size / 1024 / 1024)) MB"
+          done
+
+      - name: 🔄 Update Kubernetes manifests
+        run: |
+          IMAGE_TAG="${{ steps.tag.outputs.image_tag }}"
+          echo "🔧 Updating Kubernetes manifest with: $IMAGE_TAG"
+          
+          # Backup original
+          cp backstage/kubernetes/backstage.yaml backstage/kubernetes/backstage.yaml.bak
+          
+          # Update image tag
+          sed -i "s|image: docker\.io/jaimehenao8126/backstage:.*|image: $IMAGE_TAG|g" backstage/kubernetes/backstage.yaml
+          
+          # Verify change
+          echo "🔍 Verification - Updated image line:"
+          grep -n "image: docker.io/jaimehenao8126/backstage:" backstage/kubernetes/backstage.yaml || {
+            echo "❌ Image update failed!"
+            echo "🔍 Current content:"
+            cat backstage/kubernetes/backstage.yaml | grep -A2 -B2 "image:"
+            exit 1
+          }
+
+      - name: 📝 Commit and push changes
+        run: |
+          IMAGE_TAG="${{ steps.tag.outputs.image_tag }}"
+          
+          # Configure git
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action Bot"
+          
+          # Check if there are changes
+          if git diff --quiet backstage/kubernetes/backstage.yaml; then
+            echo "❌ No changes detected in manifest - this is unexpected!"
+            echo "🔍 Current manifest content:"
+            grep -C3 "image:" backstage/kubernetes/backstage.yaml
+            exit 1
+          fi
+          
+          # Show changes
+          echo "📋 Git diff of changes:"
+          git diff backstage/kubernetes/backstage.yaml
+          
+          # Commit and push
+          git add backstage/kubernetes/backstage.yaml
+          git commit -m "🚀 deploy: update backstage image to $IMAGE_TAG
+
+          - Built from commit: $GITHUB_SHA
+          - Branch: $GITHUB_REF_NAME
+          - Workflow: $GITHUB_RUN_NUMBER"
+          
+          git push
+
+      - name: 🎉 Success summary
+        run: |
+          IMAGE_TAG="${{ steps.tag.outputs.image_tag }}"
+          echo "🚀 Deployment completed successfully!"
+          echo "================================================"
+          echo "📦 Docker image: $IMAGE_TAG"
+          echo "🔄 Kubernetes manifest: Updated and committed"
+          echo "✅ ArgoCD sync: Will detect changes automatically"
+          echo "🔗 ArgoCD UI: https://argocd.test.com"
+          echo "⏱️ ETA: ~30 seconds for ArgoCD to detect and sync"
+          echo "================================================"
+
+      - name: 💥 Failure cleanup
+        if: failure()
+        run: |
+          echo "❌ Build failed - cleaning up..."
+          
+          # Restore backup if it exists
+          if [ -f backstage/kubernetes/backstage.yaml.bak ]; then
+            mv backstage/kubernetes/backstage.yaml.bak backstage/kubernetes/backstage.yaml
+            echo "🔄 Restored original manifest"
+          fi
+          
+          # Show logs for debugging
+          echo "🔍 Recent Docker logs:"
+          docker system df || true
+          docker buildx ls || true
