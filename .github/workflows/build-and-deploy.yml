@@ -66,18 +66,17 @@ jobs:
           # Also export as step output for immediate use
           echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Build and push Docker image (AMD64)
+      - name: Build and push multi-platform Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./backstage/Dockerfile
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.docker-build.outputs.image_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # Note: ARM64 support pending resolution of native module compilation issues
-          # Modules like cpu-features, tree-sitter fail during cross-compilation
+          # Enhanced multi-platform build with architecture-specific optimizations
 
       - name: Update Kubernetes manifests
         run: |

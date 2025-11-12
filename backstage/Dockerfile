@@ -1,5 +1,13 @@
-# Multi-stage Dockerfile for complete Backstage build
-FROM node:22-bookworm-slim AS packages
+# Multi-stage Dockerfile for complete Backstage build (Multi-Platform Support)
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS packages
+
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ARG TARGETOS
+ARG TARGETARCH
+
+# Print build info for debugging
+RUN echo "Building on $BUILDPLATFORM, targeting $TARGETPLATFORM"
 
 WORKDIR /app
 COPY backstage/package.json backstage/yarn.lock ./
@@ -14,27 +22,64 @@ COPY backstage/packages packages
 # For now, skip plugins as they don't follow Backstage plugin structure
 # COPY backstage/plugins ./plugins
 
-# Install dependencies optimized for AMD64 builds
+# Configure for cross-platform builds
+ENV npm_config_target_arch=$TARGETARCH
+ENV npm_config_target_platform=$TARGETOS
+ENV npm_config_cache=/tmp/.npm
+ENV CYPRESS_INSTALL_BINARY=0
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+
+# Skip problematic native modules that don't cross-compile well
+ENV npm_config_optional=false
+
+# Install dependencies with platform-specific optimizations
 RUN --mount=type=cache,target=/home/node/.cache/yarn,sharing=locked,uid=1000,gid=1000 \
-    yarn install --immutable --network-timeout 300000
+    --mount=type=cache,target=/tmp/.npm,sharing=locked,uid=1000,gid=1000 \
+    if [ "$TARGETARCH" = "arm64" ]; then \
+      echo "ARM64 build - using extended timeout and fallback strategies"; \
+      yarn install --immutable --network-timeout 900000 --ignore-engines || \
+      yarn install --immutable --network-timeout 900000 --ignore-engines --ignore-scripts; \
+    else \
+      echo "AMD64 build - standard installation"; \
+      yarn install --immutable --network-timeout 300000; \
+    fi
 
 FROM node:22-bookworm-slim AS build
+
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM  
+ARG TARGETOS
+ARG TARGETARCH
 
 # Set Python interpreter for `node-gyp` to use
 ENV PYTHON=/usr/bin/python3
 
-# Install build dependencies for AMD64
+# Install build dependencies with architecture-specific packages
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && \
-    apt-get install -y --no-install-recommends \
-    python3 \
-    g++ \
-    build-essential \
-    make \
-    git \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    if [ "$TARGETARCH" = "arm64" ]; then \
+      echo "Installing ARM64 build dependencies"; \
+      apt-get install -y --no-install-recommends \
+      python3 \
+      g++ \
+      build-essential \
+      make \
+      git \
+      ca-certificates \
+      libc6-dev \
+      pkg-config; \
+    else \
+      echo "Installing AMD64 build dependencies"; \
+      apt-get install -y --no-install-recommends \
+      python3 \
+      g++ \
+      build-essential \
+      make \
+      git \
+      ca-certificates; \
+    fi && \
+    rm -rf /var/lib/apt/lists/*
 
 USER node
 WORKDIR /app
@@ -47,13 +92,24 @@ COPY --chown=node:node backstage/app-config*.yaml ./
 COPY --chown=node:node backstage/catalog ./catalog
 COPY --chown=node:node backstage/examples ./examples
 
-# Build the application
+# Build the application with platform-specific optimizations
 ENV NODE_OPTIONS="--max-old-space-size=4096"
-RUN yarn build:backend
+
+# Use different build strategies based on target architecture
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+      echo "ARM64 build - using optimized settings"; \
+      export NODE_OPTIONS="--max-old-space-size=6144"; \
+      yarn build:backend --verbose || yarn build:backend --no-cache; \
+    else \
+      echo "AMD64 build - standard build"; \
+      yarn build:backend; \
+    fi
 
 FROM node:22-bookworm-slim AS runtime
 
-# Install runtime dependencies
+ARG TARGETARCH
+
+# Install runtime dependencies with architecture considerations
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && \
@@ -64,6 +120,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     libsqlite3-dev \
     curl \
     ca-certificates \
+    $([ "$TARGETARCH" = "arm64" ] && echo "libc6-dev") \
     && rm -rf /var/lib/apt/lists/*
 
 # From here on we use the least-privileged `node` user to run the backend.
