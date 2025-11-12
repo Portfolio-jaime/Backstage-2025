@@ -29,8 +29,8 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 # Install dependencies with extended timeout and fallback for all architectures
 RUN --mount=type=cache,target=/home/node/.cache/yarn,sharing=locked,uid=1000,gid=1000 \
-    yarn install --immutable --network-timeout 900000 --ignore-engines || \
-    yarn install --immutable --network-timeout 900000 --ignore-scripts
+    yarn install --immutable --network-timeout 900000 || \
+    yarn install --immutable --network-timeout 900000 --mode skip-build
 
 FROM node:22-bookworm-slim AS build
 
