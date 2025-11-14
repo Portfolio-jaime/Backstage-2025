@@ -1,4 +1,5 @@
 # Deployment principal de Backstage
+# trigger: workflow-dispatch-20251113
 ---
 apiVersion: apps/v1
 kind: Deployment
