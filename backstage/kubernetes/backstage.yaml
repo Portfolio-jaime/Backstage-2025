@@ -28,7 +28,7 @@ spec:
       containers:
       - name: backstage
         # Usar tag específico en lugar de latest para GitOps
-        image: docker.io/jaimehenao8126/backstage:main-ac4044e
+        image: docker.io/jaimehenao8126/backstage:main-175cbe7
         imagePullPolicy: Always
         # image: node:18-alpine  # Imagen base para desarrollo
         ports:
